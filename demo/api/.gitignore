@@ -1,0 +1,23 @@
+# Dependências e build
+/node_modules
+/dist
+/coverage
+*.tsbuildinfo
+
+# Configuração local (RN-027): nunca versionar
+.env
+.env.*
+!.env.example
+
+# Banco SQLite local
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+/data/
+
+# Logs e sistema
+/logs
+*.log
+.DS_Store
