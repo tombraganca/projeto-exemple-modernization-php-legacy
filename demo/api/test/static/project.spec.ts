@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -12,7 +13,50 @@ const readJson = (file: string): Record<string, unknown> =>
     unknown
   >;
 
+/** Arquivos versionados no repositório (relativos à raiz do git), ou `null` sem git disponível. */
+function gitLsFiles(): string[] | null {
+  try {
+    return execFileSync('git', ['ls-files', '--full-name'], {
+      cwd: API_ROOT,
+      encoding: 'utf8',
+    })
+      .split('\n')
+      .filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
 describe('Projeto da API', () => {
+  describe('Nenhuma configuração fixa no código', () => {
+    it('process.env só é lido em src/main.ts', () => {
+      const offenders = listSourceFiles()
+        .filter((f) => f.path !== 'main.ts')
+        .filter((f) => /\bprocess\.env\b/.test(f.content))
+        .map((f) => f.path);
+      expect(offenders).toEqual([]);
+    });
+
+    it('não há caminho de banco, porta nem valor padrão numérico escritos no código', () => {
+      const offenders = listSourceFiles()
+        .filter(
+          (f) =>
+            /\.(sqlite|db)['"`]/.test(f.content) ||
+            /listen\(\s*\d/.test(f.content) ||
+            /(\?\?|\|\|)\s*\d{2,5}\b/.test(f.content),
+        )
+        .map((f) => f.path);
+      expect(offenders).toEqual([]);
+    });
+
+    it('nenhum .env está versionado (só .env.example)', (ctx) => {
+      const files = gitLsFiles();
+      if (files === null) ctx.skip();
+      const envs = (files ?? []).filter((f) => /(^|\/)\.env(\..*)?$/.test(f));
+      expect(envs.filter((f) => !f.endsWith('.env.example'))).toEqual([]);
+    });
+  });
+
   describe('API criada a partir do esqueleto oficial, sem autenticação', () => {
     it('foi gerada pelo esqueleto oficial do NestJS', () => {
       expect(readJson('nest-cli.json').collection).toBe('@nestjs/schematics');
