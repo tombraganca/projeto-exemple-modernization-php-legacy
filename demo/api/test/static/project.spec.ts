@@ -48,4 +48,38 @@ describe('Projeto da API', () => {
       expect(offenders).toEqual([]);
     });
   });
+
+  describe('Nenhuma consulta monta SQL por concatenação', () => {
+    const MIGRATIONS_DIR = 'infrastructure/database/migrations/';
+    const importaSqlDoKysely = (content: string): boolean =>
+      /import\s*\{[^}]*\bsql\b[^}]*\}\s*from\s*['"]kysely['"]/.test(content);
+
+    it('o template sql do Kysely só aparece nas migrations', () => {
+      const offenders = listSourceFiles()
+        .filter((f) => !f.path.startsWith(MIGRATIONS_DIR))
+        .filter((f) => importaSqlDoKysely(f.content))
+        .map((f) => f.path);
+      expect(offenders).toEqual([]);
+    });
+
+    it('as migrations não interpolam valores no SQL', () => {
+      const offenders = listSourceFiles()
+        .filter((f) => f.path.startsWith(MIGRATIONS_DIR))
+        .filter((f) => /sql`[^`]*\$\{/.test(f.content))
+        .map((f) => f.path);
+      expect(offenders).toEqual([]);
+    });
+
+    it('não usa sql.raw, sql.lit, sql.ref, sql.id nem prepare com template interpolado', () => {
+      const offenders = listSourceFiles({ includeSpecs: true })
+        .filter(
+          (f) =>
+            /\bsql\.(raw|lit|ref|id)\s*\(/.test(f.content) ||
+            /\.prepare\(\s*`[^`]*\$\{/.test(f.content) ||
+            /\.exec\(\s*`[^`]*\$\{/.test(f.content),
+        )
+        .map((f) => f.path);
+      expect(offenders).toEqual([]);
+    });
+  });
 });
