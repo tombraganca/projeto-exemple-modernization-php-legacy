@@ -5,13 +5,16 @@ Este documento detalha, na prática, duas decisões registradas como ADR:
 - **ADR-017 · Arquitetura em camadas por módulo na API**: estrutura de pastas, regras de dependência, nomes e montagem do pipeline HTTP.
 - **ADR-018 · Persistência com Kysely + better-sqlite3 (Node 24)**: migrations em TypeScript, migração na subida e consultas só pelo builder.
 
+Configuração: `@nestjs/config` carrega o `.env` da API (decisão do dev no CARD-001, D-10; ajuste do ADR-017 pedido ao agente Contexto).
+
 Se algo aqui contradisser um ADR, vale o ADR. Mudança de padrão começa pelo ADR, depois por este arquivo.
 
 ## Estrutura de `src/`
 
 ```
 src/
-  main.ts                    lê process.env (único lugar), loadSettings, cria a app, configureApp, listen; falha de subida
+  main.ts                    cria a app (AppModule.fromEnvironment), configureApp, listen na porta de SETTINGS; falha de subida
+  startup-failure.ts         linha de falha da subida para o stderr (sem valores de configuração)
   app.setup.ts               configureApp(app): pipeline HTTP (prefixo, versionamento, logger, CORS, Swagger)
   app.module.ts              composição raiz; APP_FILTER (CARD-004) e APP_PIPE (CARD-006+)
   config/                    validação do ambiente + Settings tipados (token SETTINGS)
@@ -71,7 +74,7 @@ endpoint testa a rota neutra em integração.
 
 | Token | O que é | Onde nasce |
 |---|---|---|
-| `SETTINGS` | `Settings` imutável vindo de `loadSettings(process.env)` | `config/settings.module.ts` (global) |
+| `SETTINGS` | `Settings` imutável: `loadSettings` sobre o `ConfigService` (`.env` + ambiente do processo) | `config/settings.module.ts` (global) |
 | `DATABASE` | `Kysely<Database>` já migrado (e semeado, se `SEED=true`) | `infrastructure/database/database.module.ts` |
 | Portas | Classes abstratas em `modules/*/application` (ex.: `ContatoRepository`) | `<funcionalidade>.module.ts` liga a porta ao adapter |
 
@@ -79,11 +82,13 @@ Só adapters em `modules/*/infrastructure` injetam `DATABASE`. Controllers e cas
 
 ## Configuração
 
-- `process.env` só é lido em `src/main.ts`, que passa o objeto para `loadSettings(env)`.
-- `loadSettings` é pura: valida, não tem valor padrão e devolve um objeto congelado. Erro = `EnvValidationError`
+- `SettingsModule.fromEnvironment()` usa `ConfigModule.forRoot({ envFilePath: '.env', validate })` do `@nestjs/config`:
+  carrega o `.env` do diretório de trabalho (ausente não é erro) e o ambiente do processo vence o `.env`.
+- Nenhum código da aplicação lê `process.env` (verificado em `test/static/project.spec.ts`): todo mundo injeta `SETTINGS`.
+- `loadSettings` é pura e é o `validate` do ConfigModule: valida, não tem valor padrão e devolve um objeto congelado. Erro = `EnvValidationError`
   (`variável <X> ausente|inválida`, nunca o valor).
-- A aplicação não carrega `.env`. Localmente: `export …` ou `node --env-file=.env dist/main.js`.
-- Variável nova: campo em `Settings`, regra em `loadSettings`, caso em `settings.spec.ts` e linha no README.
+- Localmente: `cp .env.example .env && npm run start:dev`. Testes usam `AppModule.register(settings)`, sem `.env`.
+- Variável nova: campo em `Settings`, regra em `loadSettings`, chave em `SETTINGS_KEYS` (`settings.module.ts`), caso em `settings.spec.ts`, linha no `.env.example` e no README.
 
 ## Banco e SQL (ADR-018)
 

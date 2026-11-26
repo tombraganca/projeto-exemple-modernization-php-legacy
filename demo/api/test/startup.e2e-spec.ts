@@ -80,6 +80,57 @@ describe('Subida da API (processo real, dist/main.js)', () => {
     },
   );
 
+  describe('.env da API (D-10)', () => {
+    const escreverEnv = (linhas: Record<string, string>): void => {
+      writeFileSync(
+        join(cwd, '.env'),
+        Object.entries(linhas)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('\n') + '\n',
+      );
+    };
+
+    it('sobe só com o .env do diretório de trabalho (npm run start:dev)', async () => {
+      escreverEnv({ SQLITE_PATH: dbPath, PORT: String(port), SEED: 'true' });
+
+      api = await startApi({}, { cwd });
+
+      expect(api.ready).toBe(true);
+      expect(api.stdout()).toContain(`API no ar na porta ${port}`);
+      expect(existsSync(dbPath)).toBe(true);
+      expect(
+        (await fetch(`http://127.0.0.1:${port}/api/qualquer`)).status,
+      ).toBe(404);
+    });
+
+    it('variável do ambiente do processo tem precedência sobre o .env', async () => {
+      const outraPorta = await freePort();
+      escreverEnv({ SQLITE_PATH: dbPath, PORT: String(port) });
+
+      api = await startApi({ PORT: String(outraPorta) }, { cwd });
+
+      expect(api.ready).toBe(true);
+      expect(api.stdout()).toContain(`API no ar na porta ${outraPorta}`);
+      expect(
+        (await fetch(`http://127.0.0.1:${outraPorta}/api/qualquer`)).status,
+      ).toBe(404);
+    });
+
+    it('.env com valor inválido falha igual ao ambiente, sem vazar o valor', async () => {
+      escreverEnv({ SQLITE_PATH: dbPath, PORT: 'porta-secreta' });
+
+      api = await startApi({}, { cwd });
+
+      expect(api.ready).toBe(false);
+      expect((await api.exited()).code).not.toBe(0);
+      expect(api.stderr()).toContain(
+        '[api] Falha na subida (config): variável PORT inválida.',
+      );
+      expect(api.stderr()).not.toContain('porta-secreta');
+      expect(existsSync(dbPath)).toBe(false);
+    });
+  });
+
   it('PORT ausente também impede a subida', async () => {
     api = await startApi({ SQLITE_PATH: dbPath }, { cwd });
 

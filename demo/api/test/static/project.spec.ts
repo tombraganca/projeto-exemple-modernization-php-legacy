@@ -29,12 +29,21 @@ function gitLsFiles(): string[] | null {
 
 describe('Projeto da API', () => {
   describe('Nenhuma configuração fixa no código', () => {
-    it('process.env só é lido em src/main.ts', () => {
+    it('nenhum código da aplicação lê process.env (a configuração vem do ConfigModule)', () => {
       const offenders = listSourceFiles()
-        .filter((f) => f.path !== 'main.ts')
         .filter((f) => /\bprocess\.env\b/.test(f.content))
         .map((f) => f.path);
       expect(offenders).toEqual([]);
+    });
+
+    it('.env.example versionado com SQLITE_PATH, PORT e SEED; .env ignorado pelo git', () => {
+      const exemplo = readFileSync(join(API_ROOT, '.env.example'), 'utf8');
+      for (const variavel of ['SQLITE_PATH', 'PORT', 'SEED']) {
+        expect(exemplo).toMatch(new RegExp(`^${variavel}=`, 'm'));
+      }
+      const gitignore = readFileSync(join(API_ROOT, '.gitignore'), 'utf8');
+      expect(gitignore).toMatch(/^\.env$/m);
+      expect(gitignore).toMatch(/^!\.env\.example$/m);
     });
 
     it('não há caminho de banco, porta nem valor padrão numérico escritos no código', () => {
